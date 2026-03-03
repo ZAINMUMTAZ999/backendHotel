@@ -42,17 +42,14 @@ cloudinary.config({
   api_secret: "F5uKFc-wILFbT2CW44eUJzDV8o8"
 });
 
-// ✅ FIX 1: Mount router on app (it was defined but never used!)
-const router = Router();
-router.use("/v1", registerRouter);
-router.use("/v2", loginRouter);
-router.use("/v3", addHeroImageRouter);
-app.use("/", router); // 👈 this line was missing
-
 app.get("/", (_req, res: Response) => {
   res.send("✅ Backend running successfully!");
 });
 
-// ✅ FIX 2: Remove app.listen() — Netlify is serverless, no ports
+const router = Router();
+router.use("/api/v1", registerRouter);
+router.use("/api/v2", loginRouter);
+router.use("/api/v3", addHeroImageRouter);
+app.use("/", router);
+
 export const handler = serverless(app);
-// ❌ DELETE: app.listen(8000, ...) — this breaks Netlify deployment
