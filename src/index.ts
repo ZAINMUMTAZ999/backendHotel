@@ -21,7 +21,7 @@ mongoose
 // CORS
 const allowedOrigins = [
 //   process.env.FRONTEND_URL as string,
-"demosekaispacehotelapp.vercel.app",
+"https://demosekaispacehotelapp.vercel.app",
 "https://demosekaispacehotelapp-zainmumtaz999s-projects.vercel.app",
 "https://demosekaispacehotelapp-git-main-zainmumtaz999s-projects.vercel.app",
 "https://demosekaispacehotelapp-fx3a46k83-zainmumtaz999s-projects.vercel.app",
