@@ -23,6 +23,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URL as string,
   "http://localhost:3000",
   "https://demosekaispacehotelapp.vercel.app",
+  "https://demosekaispacehotelapp-git-main-zainmumtaz999s-projects.vercel.app"
 ];
 app.use(cors({
   origin: function (origin, callback) {
