@@ -44,7 +44,7 @@ cloudinary.config({
 });
 
 app.get("/", (_req, res: Response) => {
-  res.send("✅ Backend running successfully!");
+  res.send(" Backend running successfully!");
 });
 
 // Routes
