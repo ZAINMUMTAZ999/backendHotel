@@ -19,7 +19,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "cross-env": "^7.0.3",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "express-validator": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
@@ -30,6 +30,7 @@
     "node": "^20.18.0",
     "nodemailer": "^7.0.3",
     "serverless-http": "^3.2.0",
+    "stripe": "^23.1.0",
     "tsconfig": "^7.0.0",
     "tsconfig.json": "^1.0.0"
   },

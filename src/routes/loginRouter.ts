@@ -5,6 +5,8 @@ import jwt from "jsonwebtoken";
 import { verifyToken } from "../middlewares/verifyToken";
 import cloudinary from "cloudinary";
 // import { v2 as cloudinary } from "cloudinary";
+import { stripe } from "../config/stripe";
+
 
 // import { AddJobTypes } from "../models/addJob.models";
 import multer from "multer";
@@ -17,6 +19,7 @@ import { AddHotel, addHotelTypes } from "../models/addHotel.models";
 import { AddHeroImage } from "../models/addHeroImage";
 import { Review } from "../models/addReviewHoteLId";
 import { AddBooking, AddBookingTypes } from "../models/addBooking.model";
+import mongoose from "mongoose";
 
 const JWT_SECRET_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
@@ -498,7 +501,227 @@ export async function uploadImageHero(
     console.error("Error uploading to Cloudinary:", err);
     throw new Error("Failed to upload image to Cloudinary");
   }
+};
+
+ loginRouter.post(
+  "/create-booking-checkout",
+  verifyToken,
+  async (req: Request, resp: Response) => {
+    let booking;
+
+    try {
+      // Get logged-in user's ID from JWT
+      const userId = req.userId;
+
+      if (!userId) {
+        resp.status(401).json({
+          message: "Please login first",
+        });
+        return;
+      }
+
+      // Only receive hotelId
+      const { hotelId } = req.body;
+
+      if (!hotelId) {
+        resp.status(400).json({
+          message: "Hotel ID is required",
+        });
+        return;
+      }
+
+   if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+  return resp.status(400).json({
+    message: "Invalid hotel ID",
+  });
 }
+      // Fetch hotel from MongoDB
+      const hotel = await AddHotel.findById(hotelId);
+
+      if (!hotel) {
+        resp.status(404).json({
+          message: "Hotel not found",
+        });
+        return;
+      }
+
+      // Get actual price from database
+      const price = Number(hotel.pricePerNight);
+
+      if (!Number.isFinite(price) || price <= 0) {
+        resp.status(400).json({
+          message: "Invalid hotel price",
+        });
+        return;
+      }
+
+      const amountInCents = Math.round(price * 100);
+
+      // Create pending booking
+      booking = await AddBooking.create({
+        userId,
+        hotelId,
+        Amount: price.toFixed(2),
+        paymentStatus: "PENDING",
+      });
+
+      // Create Stripe Checkout
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: hotel.name,
+              },
+              unit_amount: amountInCents,
+            },
+            quantity: 1,
+          },
+        ],
+
+        metadata: {
+          bookingId: booking._id.toString(),
+          userId: userId.toString(),
+        },
+
+        success_url:
+          `${process.env.FRONTEND_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+
+        cancel_url:
+          `${process.env.FRONTEND_URL}/payment/cancel`,
+      });
+
+      booking.stripeSessionId = session.id;
+      await booking.save();
+
+      return resp.status(200).json({
+        success: true,
+        checkoutUrl: session.url,
+        bookingId: booking._id,
+      });
+
+    } catch (error) {
+      console.error("Booking checkout error:", error);
+
+      if (booking) {
+        booking.paymentStatus = "FAILED";
+        await booking.save();
+      }
+
+      return resp.status(500).json({
+        message: "Unable to create booking payment",
+      });
+    }
+  }
+);
+loginRouter.post(
+  "/verify-payment",
+  verifyToken,
+  async (req: Request, resp: Response) => {
+    try {
+      const userId = req.userId;
+      const { sessionId } = req.body;
+
+      if (!userId) {
+        return resp.status(401).json({
+          message: "Please login first",
+        });
+      }
+
+      if (!sessionId) {
+        return resp.status(400).json({
+          message: "Session ID is required",
+        });
+      }
+
+      // Retrieve the real Checkout Session from Stripe
+      const session =
+        await stripe.checkout.sessions.retrieve(sessionId);
+
+      // Verify checkout and payment status
+      if (
+        session.status !== "complete" ||
+        session.payment_status !== "paid"
+      ) {
+        return resp.status(400).json({
+          success: false,
+          paymentStatus: "PENDING",
+          message: "Payment has not been completed",
+        });
+      }
+
+      const bookingId = session.metadata?.bookingId;
+      const sessionUserId = session.metadata?.userId;
+
+      // Verify ownership
+      if (
+        !bookingId ||
+        sessionUserId !== String(userId)
+      ) {
+        return resp.status(403).json({
+          message: "Payment ownership verification failed",
+        });
+      }
+
+      // Find the exact booking
+      const booking = await AddBooking.findOne({
+        _id: bookingId,
+        userId,
+        stripeSessionId: session.id,
+      });
+
+      if (!booking) {
+        return resp.status(404).json({
+          message: "Booking not found",
+        });
+      }
+
+      // Verify the amount and currency
+      const expectedAmount = Math.round(
+        Number(booking.Amount) * 100
+      );
+
+      if (
+        !Number.isSafeInteger(expectedAmount) ||
+        session.amount_total !== expectedAmount ||
+        session.currency !== "usd"
+      ) {
+        return resp.status(400).json({
+          message: "Payment amount or currency mismatch",
+        });
+      }
+
+      // Update MongoDB
+      if (booking.paymentStatus !== "PAID") {
+        booking.paymentStatus = "PAID";
+
+        booking.stripePaymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id;
+
+        await booking.save();
+      }
+
+      return resp.status(200).json({
+        success: true,
+        paymentStatus: "PAID",
+        bookingId: booking._id,
+        message: "Payment verified successfully",
+      });
+
+    } catch (error) {
+      console.error("Payment verification error:", error);
+
+      return resp.status(500).json({
+        message: "Payment verification failed",
+      });
+    }
+  }
+);
 loginRouter.put(
   "/UpdateUser",
   verifyToken,
