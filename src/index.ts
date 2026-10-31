@@ -7,9 +7,9 @@ import { v2 as cloudinary } from "cloudinary";
 import { registerRouter } from './routes/registerRouter';
 import { loginRouter } from './routes/loginRouter';
 import { addHeroImageRouter } from './routes/addHeroImageRouter';
-import dns from "dns";
+// import dns from "dns";
 
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
+// dns.setServers(["8.8.8.8", "8.8.4.4"]);
 const app = express();
 app.use(express.json());
 
